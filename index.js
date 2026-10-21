@@ -1,0 +1,154 @@
+// ==========================================
+// 1. Tab Navigation Logic
+// ==========================================
+function switchTab(tabId, btnElement) {
+    // Hide all section views
+    document.querySelectorAll('.section').forEach(sec => sec.classList.remove('active'));
+    
+    // Remove active highlight from all navigation buttons
+    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+    
+    // Show selected section and highlight corresponding button
+    document.getElementById(tabId).classList.add('active');
+    btnElement.classList.add('active');
+}
+
+// ==========================================
+// 2. Initializing & Checking Saved API Key
+// ==========================================
+window.onload = function() {
+    checkApiKeyStatus();
+};
+
+function checkApiKeyStatus() {
+    const savedKey = localStorage.getItem("gemini_api_key");
+    const statusElem = document.getElementById("key-status");
+    
+    if (savedKey && savedKey.length > 10) {
+        if (statusElem) {
+            statusElem.innerText = "🔑 Key Status: Connected & Ready";
+            statusElem.style.color = "#00796b";
+        }
+    } else {
+        if (statusElem) {
+            statusElem.innerText = "🔒 Key Status: Not Set";
+            statusElem.style.color = "#d32f2f";
+        }
+    }
+}
+
+// ==========================================
+// 3. Saving Gemini API Key to Local Storage
+// ==========================================
+function saveApiKey() {
+    const keyInput = document.getElementById("api-key-input").value.trim();
+    
+    if (keyInput) {
+        localStorage.setItem("gemini_api_key", keyInput);
+        checkApiKeyStatus();
+        alert("API Key Saved Successfully!");
+        document.getElementById("api-key-input").value = "";
+        
+        // Automatically switch to AI Study Buddy tab after saving
+        const aiTabBtn = document.querySelectorAll('.nav-btn')[1];
+        if (aiTabBtn) switchTab('ai-buddy', aiTabBtn);
+    } else {
+        alert("Please enter a valid API Key.");
+    }
+}
+
+// ==========================================
+// 4. Keyboard Shortcuts (Enter key to Send)
+// ==========================================
+function handleKeyPress(e) {
+    if (e.key === 'Enter') {
+        sendMessage();
+    }
+}
+
+// ==========================================
+// 5. Live Google Gemini API Integration
+// ==========================================
+async function sendMessage() {
+    const inputField = document.getElementById("user-input");
+    const userText = inputField.value.trim();
+    const apiKey = localStorage.getItem("gemini_api_key");
+
+    if (!userText) return;
+
+    // Verify key exists
+    if (!apiKey) {
+        alert("Please set your Gemini API key in the API Guide tab first!");
+        const apiTabBtn = document.querySelectorAll('.nav-btn')[3];
+        if (apiTabBtn) switchTab('api-guide', apiTabBtn);
+        return;
+    }
+
+    // Append user message to UI
+    appendMessage(userText, 'user');
+    inputField.value = "";
+
+    // Show temporary "Thinking..." message
+    const loadingId = appendMessage("Thinking...", 'ai');
+
+    try {
+        // Asynchronous call to Google Gemini 2.5 Flash Endpoint
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+            method: "POST",
+            headers: { 
+                "Content-Type": "application/json" 
+            },
+            body: JSON.stringify({
+                contents: [{ 
+                    parts: [{ text: userText }] 
+                }],
+                generationConfig: { 
+                    maxOutputTokens: 8192,
+                    temperature: 0.7 
+                }
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.error) {
+            document.getElementById(loadingId).innerText = `API Error: ${data.error.message || 'Unable to process request.'}`;
+            return;
+        }
+
+        const aiReply = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+        if (aiReply) {
+            // Replace loading placeholder with live answer
+            document.getElementById(loadingId).innerText = aiReply;
+        } else {
+            document.getElementById(loadingId).innerText = "No response generated. Please try rephrasing your question.";
+        }
+
+    } catch (error) {
+        document.getElementById(loadingId).innerText = "Network Error: Could not connect to Gemini API. Check your internet connection and API key.";
+    }
+}
+
+// ==========================================
+// 6. Helper Function: Append Messages to UI
+// ==========================================
+function appendMessage(text, sender) {
+    const chatMessages = document.getElementById("chat-messages");
+    if (!chatMessages) return;
+
+    const msgDiv = document.createElement("div");
+    const msgId = 'msg-' + Date.now();
+    
+    msgDiv.id = msgId;
+    msgDiv.className = `message ${sender}`;
+    msgDiv.innerText = text;
+
+    chatMessages.appendChild(msgDiv);
+    
+    // Auto-scroll to bottom of chat
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+
+    return msgId;
+}
+  
